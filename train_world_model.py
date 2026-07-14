@@ -13,6 +13,10 @@ def build_training_batch(raw_batch: dict) -> dict:
 
 def train_world_model(ensemble: RSSMEnsemble, buffer: ReplayBuffer, steps: int,
                        batch_size=32, seq_len=15, lr=1e-3, log_path=None) -> list:
+    # ReplayBuffer.sample_sequences always returns CPU tensors (numpy-derived);
+    # move each batch to wherever the ensemble actually lives so this works
+    # unchanged whether the caller put it on cpu/mps/cuda.
+    device = next(ensemble.parameters()).device
     optimizers = [torch.optim.Adam(m.parameters(), lr=lr) for m in ensemble.members]
     losses = []
 
@@ -23,6 +27,7 @@ def train_world_model(ensemble: RSSMEnsemble, buffer: ReplayBuffer, steps: int,
             # must be able to diverge on scarce/novel data for the ensemble
             # disagreement signal (Task 4) to mean anything.
             raw = buffer.sample_sequences(batch_size=batch_size, seq_len=seq_len)
+            raw = {k: v.to(device) for k, v in raw.items()}
             batch = build_training_batch(raw)
             opt.zero_grad()
             loss = rssm_loss(member, batch)["total"]
@@ -51,14 +56,18 @@ def _append_losses(log_path: str, losses: list):
 
 if __name__ == "__main__":
     import numpy as np
+    from device import get_device
     from env.tetris_env import SimplifiedTetrisEnv, ACTIONS
     from collect import collect_episodes, random_policy
+
+    device = get_device()
+    print(f"using device: {device}")
 
     env = SimplifiedTetrisEnv(seed=0)
     buffer = ReplayBuffer(obs_dim=407, num_actions=len(ACTIONS))
     collect_episodes(env, buffer, random_policy, n_episodes=50)
 
-    ensemble = RSSMEnsemble(n_models=3)
+    ensemble = RSSMEnsemble(n_models=3).to(device)
     losses = train_world_model(ensemble, buffer, steps=500)
     print(f"final loss: {losses[-1]:.4f} (started at {losses[0]:.4f})")
     torch.save(ensemble.state_dict(), "world_model_ensemble.pt")

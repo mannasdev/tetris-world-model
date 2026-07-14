@@ -20,6 +20,7 @@ def rollout_real_and_dream(env: SimplifiedTetrisEnv, ensemble: RSSMEnsemble, mem
             break
 
     member = ensemble.members[member_idx]
+    device = next(member.parameters()).device
     with torch.no_grad():
         # Anchor imagination to the real starting observation via one posterior
         # step (same convention Task 9's imagine_rollout uses) before switching
@@ -27,17 +28,18 @@ def rollout_real_and_dream(env: SimplifiedTetrisEnv, ensemble: RSSMEnsemble, mem
         # zero state isn't a fair "dream vs reality from the same start" test,
         # and it wouldn't match how imagination is actually initiated during
         # actor-critic training.
-        h0, z0 = member.initial_state(batch_size=1, device="cpu")
-        zero_action = torch.zeros(1, len(ACTIONS))
-        start_obs_t = torch.from_numpy(start_obs).unsqueeze(0)
+        h0, z0 = member.initial_state(batch_size=1, device=device)
+        zero_action = torch.zeros(1, len(ACTIONS), device=device)
+        start_obs_t = torch.from_numpy(start_obs).unsqueeze(0).to(device)
         h, z, _prior_logits, _post_logits = member.step_posterior(h0, z0, zero_action, start_obs_t)
 
         dream_boards = []
         for action in action_sequence[:len(real_boards)]:
-            action_onehot = torch.eye(len(ACTIONS))[action].unsqueeze(0)
+            action_onehot = torch.eye(len(ACTIONS), device=device)[action].unsqueeze(0)
             h, z, _prior_logits = member.step_prior(h, z, action_onehot)
             board_logits, _piece_logits, _reward, _cont_logits = member.heads(h, z)
-            board_prob = torch.sigmoid(board_logits).reshape(20, 10).numpy()
+            # .cpu() before .numpy(): MPS/CUDA tensors can't convert to numpy directly.
+            board_prob = torch.sigmoid(board_logits).reshape(20, 10).cpu().numpy()
             dream_boards.append((board_prob > 0.5).astype(np.float32))
 
     return {
@@ -88,9 +90,14 @@ def validate(env: SimplifiedTetrisEnv, ensemble: RSSMEnsemble, horizon=15, n_hel
 
 
 if __name__ == "__main__":
+    from device import get_device
+
+    device = get_device()
+    print(f"using device: {device}")
+
     env = SimplifiedTetrisEnv(seed=0)
-    ensemble = RSSMEnsemble(n_models=3)
-    ensemble.load_state_dict(torch.load("world_model_ensemble.pt"))
+    ensemble = RSSMEnsemble(n_models=3).to(device)
+    ensemble.load_state_dict(torch.load("world_model_ensemble.pt", map_location=device))
     result = validate(env, ensemble, horizon=15, n_held_out=10)
     print(result)
     if not result["passed"]:

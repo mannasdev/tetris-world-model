@@ -82,11 +82,15 @@ def actor_critic_loss(rollout: dict, gamma=0.99, gae_lambda=0.95) -> torch.Tenso
 
 def train_agent(ensemble: RSSMEnsemble, actor_critic: ActorCritic, buffer: ReplayBuffer, steps: int,
                  batch_size=32, horizon=15, disagreement_threshold=0.15, lr=1e-3, log_path=None) -> list:
+    # ReplayBuffer.sample_sequences always returns CPU tensors (numpy-derived);
+    # move each batch to wherever actor_critic actually lives so this works
+    # unchanged whether the caller put the models on cpu/mps/cuda.
+    device = next(actor_critic.parameters()).device
     opt = torch.optim.Adam(actor_critic.parameters(), lr=lr)
     losses = []
     for _ in range(steps):
         raw = buffer.sample_sequences(batch_size=batch_size, seq_len=1)
-        start_obs = raw["obs"][:, 0]
+        start_obs = raw["obs"][:, 0].to(device)
 
         rollout = imagine_rollout(ensemble, actor_critic, start_obs, horizon=horizon,
                                    disagreement_threshold=disagreement_threshold)
@@ -105,16 +109,20 @@ def train_agent(ensemble: RSSMEnsemble, actor_critic: ActorCritic, buffer: Repla
 
 if __name__ == "__main__":
     import torch as _torch
+    from device import get_device
     from env.tetris_env import SimplifiedTetrisEnv, ACTIONS
     from collect import collect_episodes, random_policy
+
+    device = get_device()
+    print(f"using device: {device}")
 
     env = SimplifiedTetrisEnv(seed=0)
     buffer = ReplayBuffer(obs_dim=407, num_actions=len(ACTIONS))
     collect_episodes(env, buffer, random_policy, n_episodes=50)
 
-    ensemble = RSSMEnsemble(n_models=3)
-    ensemble.load_state_dict(_torch.load("world_model_ensemble.pt"))
-    actor_critic = ActorCritic()
+    ensemble = RSSMEnsemble(n_models=3).to(device)
+    ensemble.load_state_dict(_torch.load("world_model_ensemble.pt", map_location=device))
+    actor_critic = ActorCritic().to(device)
     losses = train_agent(ensemble, actor_critic, buffer, steps=200)
     print(f"final actor-critic loss: {losses[-1]:.4f}")
     _torch.save(actor_critic.state_dict(), "actor_critic.pt")

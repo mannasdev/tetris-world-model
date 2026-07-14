@@ -16,16 +16,17 @@ class DreamTrainedPolicy:
         self.core = ensemble.members[0]
         self.actor_critic = actor_critic
         self.num_actions = len(ACTIONS)
+        self.device = next(self.core.parameters()).device
         self.h = None
         self.z = None
         self.last_action_onehot = None
 
     def reset(self):
-        self.h, self.z = self.core.initial_state(batch_size=1, device="cpu")
-        self.last_action_onehot = torch.zeros(1, self.num_actions)
+        self.h, self.z = self.core.initial_state(batch_size=1, device=self.device)
+        self.last_action_onehot = torch.zeros(1, self.num_actions, device=self.device)
 
     def __call__(self, obs: np.ndarray) -> int:
-        obs_t = torch.from_numpy(obs).unsqueeze(0)
+        obs_t = torch.from_numpy(obs).unsqueeze(0).to(self.device)
         with torch.no_grad():
             self.h, self.z, _prior, _post = self.core.step_posterior(self.h, self.z, self.last_action_onehot, obs_t)
             action, _log_prob = self.actor_critic.act(self.h, self.z)
@@ -48,14 +49,19 @@ def evaluate_policy(env: SimplifiedTetrisEnv, policy_fn, n_games=20) -> dict:
 
 
 if __name__ == "__main__":
+    from device import get_device
+
+    device = get_device()
+    print(f"using device: {device}")
+
     env = SimplifiedTetrisEnv(seed=1)
     random_result = evaluate_policy(env, random_policy, n_games=20)
     print(f"random policy: {random_result}")
 
-    ensemble = RSSMEnsemble(n_models=3)
-    ensemble.load_state_dict(torch.load("world_model_ensemble.pt"))
-    actor_critic = ActorCritic()
-    actor_critic.load_state_dict(torch.load("actor_critic.pt"))
+    ensemble = RSSMEnsemble(n_models=3).to(device)
+    ensemble.load_state_dict(torch.load("world_model_ensemble.pt", map_location=device))
+    actor_critic = ActorCritic().to(device)
+    actor_critic.load_state_dict(torch.load("actor_critic.pt", map_location=device))
     dream_policy = DreamTrainedPolicy(ensemble, actor_critic)
     dream_result = evaluate_policy(env, dream_policy, n_games=20)
     print(f"dream-trained policy: {dream_result}")

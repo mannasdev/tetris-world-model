@@ -17,6 +17,7 @@ import time
 import numpy as np
 import torch
 
+from device import get_device
 from env.tetris_env import SimplifiedTetrisEnv, ACTIONS
 from collect import random_policy
 from models.rssm import RSSMEnsemble
@@ -29,10 +30,11 @@ _CLEAR = "\033c"
 
 
 def _load_ensemble_and_actor_critic():
-    ensemble = RSSMEnsemble(n_models=3)
-    ensemble.load_state_dict(torch.load("world_model_ensemble.pt"))
-    actor_critic = ActorCritic()
-    actor_critic.load_state_dict(torch.load("actor_critic.pt"))
+    device = get_device()
+    ensemble = RSSMEnsemble(n_models=3).to(device)
+    ensemble.load_state_dict(torch.load("world_model_ensemble.pt", map_location=device))
+    actor_critic = ActorCritic().to(device)
+    actor_critic.load_state_dict(torch.load("actor_critic.pt", map_location=device))
     return ensemble, actor_critic
 
 
@@ -84,12 +86,13 @@ def cmd_dream(args):
     env = SimplifiedTetrisEnv(seed=args.seed)
     ensemble, actor_critic = _load_ensemble_and_actor_critic()
     num_actions = len(ACTIONS)
+    device = next(ensemble.parameters()).device
 
     start_obs = env.reset()
     with torch.no_grad():
-        states = ensemble.initial_state(batch_size=1, device="cpu")
-        zero_action = torch.zeros(1, num_actions)
-        start_obs_t = torch.from_numpy(start_obs).unsqueeze(0)
+        states = ensemble.initial_state(batch_size=1, device=device)
+        zero_action = torch.zeros(1, num_actions, device=device)
+        start_obs_t = torch.from_numpy(start_obs).unsqueeze(0).to(device)
         anchored = []
         for member, (h, z) in zip(ensemble.members, states):
             h2, z2, _prior, _post = member.step_posterior(h, z, zero_action, start_obs_t)
@@ -105,7 +108,8 @@ def cmd_dream(args):
 
             states, disagreement, per_member_heads = ensemble.imagine_step(states, action_onehot)
             heads = per_member_heads[args.member]
-            board_prob = torch.sigmoid(heads["board_logits"]).reshape(20, 10).numpy()
+            # .cpu() before .numpy(): MPS/CUDA tensors can't convert to numpy directly.
+            board_prob = torch.sigmoid(heads["board_logits"]).reshape(20, 10).cpu().numpy()
             board = (board_prob > 0.5).astype(np.float32)
             reward = heads["reward"].item()
             p_continue = torch.sigmoid(heads["continue_logits"]).item()

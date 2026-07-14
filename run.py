@@ -5,6 +5,7 @@ checkpoints. This script is meant to be run interactively and watched —
 it prints explicit STOP instructions rather than silently continuing past
 a failed gate, per the design doc's kill-criteria finding."""
 import torch
+from device import get_device
 from env.tetris_env import SimplifiedTetrisEnv, ACTIONS
 from replay_buffer import ReplayBuffer
 from models.rssm import RSSMEnsemble
@@ -22,10 +23,13 @@ AGENT_STEPS_PER_ROUND = 1000
 
 
 def main():
+    device = get_device()
+    print(f"using device: {device}")
+
     env = SimplifiedTetrisEnv(seed=0)
     buffer = ReplayBuffer(obs_dim=407, num_actions=len(ACTIONS))
-    ensemble = RSSMEnsemble(n_models=3)
-    actor_critic = ActorCritic()
+    ensemble = RSSMEnsemble(n_models=3).to(device)
+    actor_critic = ActorCritic().to(device)
 
     policy = random_policy
     for round_num in range(1, N_ROUNDS + 1):
@@ -75,8 +79,7 @@ def main():
     torch.save(actor_critic.state_dict(), "actor_critic.pt")
 
     print("=== final evaluation ===")
-    env.set_round(N_ROUNDS + 1)  # alife=0, matches how the agent was actually trained/evaluated
-    # (see "Known Limitations" in the design spec re: mixed-round reward labels in the buffer)
+    env.set_round(N_ROUNDS + 1)  # alife=1.0 (constant across all rounds, see set_round())
     random_result = evaluate_policy(env, random_policy, n_games=20)
     dream_result = evaluate_policy(env, DreamTrainedPolicy(ensemble, actor_critic), n_games=20)
     print(f"random policy:       {random_result}")
