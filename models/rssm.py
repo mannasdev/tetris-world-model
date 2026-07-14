@@ -149,6 +149,14 @@ class RSSMEnsemble(nn.Module):
         pairwise_dists = []
         for i in range(n):
             for j in range(i + 1, n):
+                # mean(-1), not sum(-1): this must stay per-cell RMS, on the same
+                # O(0-1) scale as validate_world_model.board_divergence's per-cell
+                # mean-abs-diff, since both are compared against the same
+                # disagreement_threshold default (0.15) across Tasks 4/9/13. A
+                # sum(-1) here reintroduces a ~sqrt(board_cells) scale blowup that
+                # silently truncates every imagined rollout at step 0 (see Task 11's
+                # scale-fix report — the real pipeline run once measured exactly
+                # this, and actor-critic loss was 0.0 for all 800 training steps).
                 pairwise_dists.append((stacked[i] - stacked[j]).pow(2).mean(-1).sqrt())
         disagreement = torch.stack(pairwise_dists, dim=0).mean(0) if pairwise_dists else torch.zeros(
             stacked.shape[1], device=stacked.device, dtype=stacked.dtype
