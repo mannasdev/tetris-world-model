@@ -17,9 +17,12 @@ class ReplayBuffer:
         length = len(action_seq)
         assert len(obs_seq) == length + 1
         assert len(reward_seq) == length and len(done_seq) == length
+        action_array = np.array(action_seq, dtype=np.int64)
+        assert np.all((action_array >= 0) & (action_array < self.num_actions)), \
+            f"All action indices must be in [0, {self.num_actions}), got range [{action_array.min()}, {action_array.max()}]"
         self._episodes.append({
             "obs": np.stack(obs_seq).astype(np.float32),
-            "action": np.array(action_seq, dtype=np.int64),
+            "action": action_array,
             "reward": np.array(reward_seq, dtype=np.float32),
             "done": np.array(done_seq, dtype=bool),
             "length": length,

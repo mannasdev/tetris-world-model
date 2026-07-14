@@ -45,3 +45,25 @@ def test_sample_raises_if_no_episode_long_enough():
         assert False, "expected a ValueError"
     except ValueError:
         pass
+
+
+def test_add_episode_rejects_out_of_range_actions():
+    buf = ReplayBuffer(OBS_DIM, NUM_ACTIONS)
+
+    # Test with action index equal to NUM_ACTIONS (out of range)
+    obs_seq, action_seq, reward_seq, done_seq = _fake_episode(5)
+    action_seq[2] = NUM_ACTIONS
+    try:
+        buf.add_episode(obs_seq, action_seq, reward_seq, done_seq)
+        assert False, "expected an AssertionError for action >= num_actions"
+    except AssertionError as e:
+        assert "action indices must be in" in str(e).lower()
+
+    # Test with negative action index
+    obs_seq_neg, action_seq_neg, reward_seq_neg, done_seq_neg = _fake_episode(5)
+    action_seq_neg[1] = -1
+    try:
+        buf.add_episode(obs_seq_neg, action_seq_neg, reward_seq_neg, done_seq_neg)
+        assert False, "expected an AssertionError for negative action"
+    except AssertionError as e:
+        assert "action indices must be in" in str(e).lower()
