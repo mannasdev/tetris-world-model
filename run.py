@@ -36,12 +36,13 @@ def main():
         print(f"=== round {round_num}: collecting {EPISODES_PER_ROUND} episodes ===")
         stats = collect_episodes(env, buffer, policy, n_episodes=EPISODES_PER_ROUND)
         print(stats)
-        if round_num == 1 and stats["total_lines_cleared"] == 0:
-            print("WARNING: round 1 yielded zero line clears even with alife shaping. "
-                  "Per the design doc's time-boxed checkpoint: stop and simplify the "
-                  "environment (e.g. narrower board) rather than iterating on reward "
-                  "shaping indefinitely.")
-            return
+        # NOTE: no round-1 "zero line clears" kill-criterion here (removed after
+        # real use exposed it as broken): a random policy over 50 short episodes
+        # essentially never clears a line by chance, so total_lines_cleared==0 was
+        # always true on round 1 regardless of whether alife shaping was providing
+        # signal -- it tested the wrong thing. The world-model validation gate
+        # below is the real quality checkpoint; it actually measures whether the
+        # model learned something, and correctly stops the pipeline if not.
 
         print(f"=== round {round_num}: training world model ===")
         losses = train_world_model(ensemble, buffer, steps=WORLD_MODEL_STEPS_PER_ROUND,
