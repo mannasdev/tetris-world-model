@@ -149,7 +149,7 @@ class RSSMEnsemble(nn.Module):
         pairwise_dists = []
         for i in range(n):
             for j in range(i + 1, n):
-                pairwise_dists.append((stacked[i] - stacked[j]).pow(2).sum(-1).sqrt())
+                pairwise_dists.append((stacked[i] - stacked[j]).pow(2).mean(-1).sqrt())
         disagreement = torch.stack(pairwise_dists, dim=0).mean(0) if pairwise_dists else torch.zeros(
             stacked.shape[1], device=stacked.device, dtype=stacked.dtype
         )
