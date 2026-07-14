@@ -140,7 +140,8 @@ class RSSMEnsemble(nn.Module):
             # "disagreement" from independently-drawn Gumbel noise alone,
             # which defeats the point of the signal (see tests/test_rssm_ensemble.py).
             soft_z = torch.softmax(prior_logits, dim=-1).reshape(h_next.shape[0], -1)
-            disagree_board_logits, _piece, _reward, _cont = member.heads(h_next, soft_z)
+            disagree_feat = torch.cat([h_next, soft_z], dim=-1)
+            disagree_board_logits = member.board_head(disagree_feat)
             disagreement_probs.append(torch.sigmoid(disagree_board_logits))
 
         stacked = torch.stack(disagreement_probs, dim=0)  # (n_models, B, board_cells)
@@ -149,6 +150,8 @@ class RSSMEnsemble(nn.Module):
         for i in range(n):
             for j in range(i + 1, n):
                 pairwise_dists.append((stacked[i] - stacked[j]).pow(2).sum(-1).sqrt())
-        disagreement = torch.stack(pairwise_dists, dim=0).mean(0) if pairwise_dists else torch.zeros(stacked.shape[1])
+        disagreement = torch.stack(pairwise_dists, dim=0).mean(0) if pairwise_dists else torch.zeros(
+            stacked.shape[1], device=stacked.device, dtype=stacked.dtype
+        )
 
         return new_states, disagreement, per_member_heads
