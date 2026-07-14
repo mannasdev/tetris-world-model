@@ -10,6 +10,11 @@ def collect_episodes(env: SimplifiedTetrisEnv, buffer: ReplayBuffer, policy_fn, 
 
     for _ in range(n_episodes):
         obs_seq, action_seq, reward_seq, done_seq = [], [], [], []
+        # Mirrors eval.py's evaluate_policy: a stateful policy (e.g. DreamTrainedPolicy)
+        # must have its (h, z) belief state reset per episode, matching the same
+        # duck-typing contract already established there.
+        if hasattr(policy_fn, "reset"):
+            policy_fn.reset()
         obs = env.reset()
         obs_seq.append(obs)
         done = False
