@@ -6,6 +6,10 @@ from replay_buffer import ReplayBuffer
 
 
 def imagine_rollout(ensemble: RSSMEnsemble, actor_critic: ActorCritic, start_obs_batch: torch.Tensor,
+                     # disagreement_threshold compares against ensemble INTER-MEMBER
+                     # disagreement (per-cell RMS across members, see ensemble.imagine_step) --
+                     # NOT the same metric as validate_world_model.validate's board_divergence
+                     # threshold, despite sharing the same 0.15 default and O(0-1) scale.
                      horizon=15, disagreement_threshold=0.15) -> dict:
     B = start_obs_batch.shape[0]
     # GRU input was cat([z, action]); latent_dim is known from members[0], so

@@ -170,7 +170,11 @@ def main():
     dream.add_argument("--horizon", type=int, default=15)
     dream.add_argument("--delay", type=float, default=0.4)
     dream.add_argument("--member", type=int, default=0, help="which ensemble member to render")
-    dream.add_argument("--disagreement-threshold", type=float, default=0.15)
+    dream.add_argument("--disagreement-threshold", type=float, default=0.15,
+                        help="ensemble inter-member disagreement (per-cell RMS) threshold above "
+                             "which the dream would be truncated in real training -- not the same "
+                             "metric as validate_world_model.validate's board_divergence threshold, "
+                             "despite sharing the same default")
     dream.set_defaults(func=cmd_dream)
 
     compare = sub.add_parser("compare", help="watch real vs. dream boards side by side")

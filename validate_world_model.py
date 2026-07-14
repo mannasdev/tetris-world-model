@@ -51,6 +51,10 @@ def board_divergence(real_boards, dream_boards) -> np.ndarray:
 
 
 def validate(env: SimplifiedTetrisEnv, ensemble: RSSMEnsemble, horizon=15, n_held_out=10,
+             # threshold compares against board_divergence (dream-vs-REALITY mean-abs-diff,
+             # from board_divergence() above) -- NOT the same metric as the ensemble
+             # inter-member disagreement threshold used in train_agent.py/visualize.py,
+             # despite sharing the same 0.15 default and O(0-1) scale.
              threshold=0.15, plot_path="plots/dream_vs_reality.png") -> dict:
     all_divergences = []
     for _ in range(n_held_out):
