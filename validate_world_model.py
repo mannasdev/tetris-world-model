@@ -58,7 +58,7 @@ def validate(env: SimplifiedTetrisEnv, ensemble: RSSMEnsemble, horizon=15, n_hel
         result = rollout_real_and_dream(env, ensemble, member_idx=0, action_sequence=actions)
         div = board_divergence(result["real_boards"], result["dream_boards"])
         if len(div) < horizon:
-            div = np.pad(div, (0, horizon - len(div)), constant_values=div[-1] if len(div) else 1.0)
+            div = np.pad(div, (0, horizon - len(div)), constant_values=1.0)
         all_divergences.append(div)
 
     all_divergences = np.stack(all_divergences)  # (n_held_out, horizon)
