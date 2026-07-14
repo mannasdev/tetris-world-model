@@ -31,6 +31,20 @@ BOARD_H, BOARD_W = 20, 10
 PIECE_TYPES = 7
 OBS_DIM = BOARD_H * BOARD_W + BOARD_H * BOARD_W + PIECE_TYPES
 
+# Tetris-Gymnasium only grants reward on a piece COMMIT (hard_drop or a
+# gravity-forced lock) -- every other action (move/rotate/soft_drop/no_op)
+# returns exactly 0, every time (verified against the installed library's
+# Tetris.step(): `reward = 0` initialized once, only touched inside the
+# hard_drop branch or the gravity-lock branch). Under discounted RL that
+# makes "commit pieces as fast as possible" strictly reward-optimal, which
+# is a different objective than "survive a long time" -- a trained agent
+# discovered exactly this: hard-drop every piece immediately, build straight
+# up in the spawn column, top out around step 11, every single game (see
+# tetris-world-model-postmortem.md). PER_TICK_SURVIVAL_REWARD is added on
+# every non-terminal step regardless of action, so simply staying alive
+# longer is guaranteed positive reward -- removing the incentive to rush.
+PER_TICK_SURVIVAL_REWARD = 1.0
+
 
 class _FixedTrueRandomizer(TrueRandomizer):
     """The installed tetris_gymnasium==0.2.1 TrueRandomizer.get_next_tetromino()
@@ -100,6 +114,10 @@ class SimplifiedTetrisEnv:
         obs = self._encode(raw_obs)
         piece_id = self._env.active_tetromino.id if self._env.active_tetromino is not None else 0
         piece_type = max(0, piece_id - len(self._env.base_pixels))
+        if not done:
+            # Only on non-terminal steps, so the game_over=-10.0 penalty stays
+            # an unambiguous negative signal, not diluted by the survival bonus.
+            reward += PER_TICK_SURVIVAL_REWARD
         return obs, float(reward), bool(done), {
             "lines_cleared": int(info["lines_cleared"]),
             "piece_type": piece_type,

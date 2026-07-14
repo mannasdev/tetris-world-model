@@ -1,5 +1,5 @@
 import numpy as np
-from env.tetris_env import SimplifiedTetrisEnv, ACTIONS, OBS_DIM
+from env.tetris_env import SimplifiedTetrisEnv, ACTIONS, OBS_DIM, PER_TICK_SURVIVAL_REWARD
 
 
 def test_action_space_excludes_hold():
@@ -45,6 +45,36 @@ def test_top_out_gives_negative_reward():
             break
     assert done, "expected the board to top out within 500 hard drops"
     assert last_reward < 0
+
+
+def test_terminal_reward_is_not_diluted_by_survival_bonus():
+    # The per-tick survival bonus must only apply on non-terminal steps --
+    # otherwise the game_over penalty gets partially cancelled out, making
+    # topping out look less bad than it should.
+    env = SimplifiedTetrisEnv(seed=0)
+    env.reset()
+    done = False
+    last_reward = None
+    for _ in range(500):
+        _, last_reward, done, _ = env.step(ACTIONS.index("hard_drop"))
+        if done:
+            break
+    assert done
+    assert last_reward == -10.0
+
+
+def test_non_terminal_no_op_gets_per_tick_survival_reward():
+    # Tetris-Gymnasium's own reward is 0 for any non-committing action
+    # (verified against the installed library source) -- the wrapper must
+    # add PER_TICK_SURVIVAL_REWARD on top, on every non-terminal step,
+    # regardless of action. This is the fix for the reward-timing bug where
+    # only piece-commits (hard_drop) ever earned reward, making "commit as
+    # fast as possible" strictly optimal under discounting.
+    env = SimplifiedTetrisEnv(seed=0)
+    env.reset()
+    obs, reward, done, info = env.step(ACTIONS.index("no_op"))
+    assert not done
+    assert reward == PER_TICK_SURVIVAL_REWARD
 
 
 def test_board_from_obs_shape():
