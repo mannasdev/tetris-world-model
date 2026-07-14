@@ -29,6 +29,9 @@ def main():
 
     policy = random_policy
     for round_num in range(1, N_ROUNDS + 1):
+        # NOTE: round 1's alife=1.0 shaping vs. round 2+'s alife=0.0 means the replay
+        # buffer mixes transitions with contradictory reward labels; see "Known
+        # Limitations" in the design spec (docs/superpowers/specs/2026-07-14-tetris-world-model-design.md).
         env.set_round(round_num)
         print(f"=== round {round_num}: collecting {EPISODES_PER_ROUND} episodes ===")
         stats = collect_episodes(env, buffer, policy, n_episodes=EPISODES_PER_ROUND)
@@ -38,6 +41,7 @@ def main():
                   "Per the design doc's time-boxed checkpoint: stop and simplify the "
                   "environment (e.g. narrower board) rather than iterating on reward "
                   "shaping indefinitely.")
+            return
 
         print(f"=== round {round_num}: training world model ===")
         losses = train_world_model(ensemble, buffer, steps=WORLD_MODEL_STEPS_PER_ROUND,
@@ -68,6 +72,7 @@ def main():
 
     print("=== final evaluation ===")
     env.set_round(N_ROUNDS + 1)  # alife=0, matches how the agent was actually trained/evaluated
+    # (see "Known Limitations" in the design spec re: mixed-round reward labels in the buffer)
     random_result = evaluate_policy(env, random_policy, n_games=20)
     dream_result = evaluate_policy(env, DreamTrainedPolicy(ensemble, actor_critic), n_games=20)
     print(f"random policy:       {random_result}")
