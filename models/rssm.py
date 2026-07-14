@@ -101,3 +101,54 @@ def rssm_loss(core: RSSMCore, batch: dict, kl_weight: float = 1.0) -> dict:
     recon_total = recon_total / T
     kl_total = kl_total / T
     return {"recon": recon_total, "kl": kl_total, "total": recon_total + kl_weight * kl_total}
+
+
+class RSSMEnsemble(nn.Module):
+    """N independently-initialized RSSMCore members. Disagreement across
+    members' board predictions is the dream-trust signal (design doc):
+    imagination should be truncated/downweighted where members disagree,
+    since that marks states outside what any member confidently learned."""
+
+    def __init__(self, n_models=3, **rssm_core_kwargs):
+        super().__init__()
+        self.members = nn.ModuleList([RSSMCore(**rssm_core_kwargs) for _ in range(n_models)])
+
+    def initial_state(self, batch_size, device):
+        return [m.initial_state(batch_size, device) for m in self.members]
+
+    def imagine_step(self, states, action):
+        new_states = []
+        disagreement_probs = []
+        per_member_heads = []
+        for member, (h, z) in zip(self.members, states):
+            h_next, z_next, prior_logits = member.step_prior(h, z, action)
+            # Predictions used downstream (reward the actor-critic trains on, etc.)
+            # come from the hard-sampled z_next, matching proper RSSM rollout
+            # semantics (a genuine discrete state must propagate forward).
+            board_logits, piece_logits, reward, cont_logits = member.heads(h_next, z_next)
+            new_states.append((h_next, z_next))
+            per_member_heads.append({
+                "board_logits": board_logits, "piece_logits": piece_logits,
+                "reward": reward, "continue_logits": cont_logits,
+            })
+
+            # Disagreement is computed from the DETERMINISTIC expected latent
+            # (softmax over prior_logits, not the hard gumbel sample above).
+            # Using the hard sample here would conflate genuine epistemic
+            # (parameter) disagreement between members with per-step sampling
+            # noise — identical-weight members would still show nonzero
+            # "disagreement" from independently-drawn Gumbel noise alone,
+            # which defeats the point of the signal (see tests/test_rssm_ensemble.py).
+            soft_z = torch.softmax(prior_logits, dim=-1).reshape(h_next.shape[0], -1)
+            disagree_board_logits, _piece, _reward, _cont = member.heads(h_next, soft_z)
+            disagreement_probs.append(torch.sigmoid(disagree_board_logits))
+
+        stacked = torch.stack(disagreement_probs, dim=0)  # (n_models, B, board_cells)
+        n = stacked.shape[0]
+        pairwise_dists = []
+        for i in range(n):
+            for j in range(i + 1, n):
+                pairwise_dists.append((stacked[i] - stacked[j]).pow(2).sum(-1).sqrt())
+        disagreement = torch.stack(pairwise_dists, dim=0).mean(0) if pairwise_dists else torch.zeros(stacked.shape[1])
+
+        return new_states, disagreement, per_member_heads
