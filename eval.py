@@ -18,16 +18,18 @@ class DreamTrainedPolicy:
         self.num_actions = len(ACTIONS)
         self.h = None
         self.z = None
+        self.last_action_onehot = None
 
     def reset(self):
         self.h, self.z = self.core.initial_state(batch_size=1, device="cpu")
+        self.last_action_onehot = torch.zeros(1, self.num_actions)
 
     def __call__(self, obs: np.ndarray) -> int:
-        zero_action = torch.zeros(1, self.num_actions)
         obs_t = torch.from_numpy(obs).unsqueeze(0)
         with torch.no_grad():
-            self.h, self.z, _prior, _post = self.core.step_posterior(self.h, self.z, zero_action, obs_t)
+            self.h, self.z, _prior, _post = self.core.step_posterior(self.h, self.z, self.last_action_onehot, obs_t)
             action, _log_prob = self.actor_critic.act(self.h, self.z)
+            self.last_action_onehot = torch.nn.functional.one_hot(action, num_classes=self.num_actions).float()
         return int(action.item())
 
 
