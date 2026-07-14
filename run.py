@@ -15,10 +15,10 @@ from validate_world_model import validate
 from train_agent import train_agent
 from eval import evaluate_policy, DreamTrainedPolicy
 
-N_ROUNDS = 4
-EPISODES_PER_ROUND = 50
-WORLD_MODEL_STEPS_PER_ROUND = 500
-AGENT_STEPS_PER_ROUND = 200
+N_ROUNDS = 6
+EPISODES_PER_ROUND = 150
+WORLD_MODEL_STEPS_PER_ROUND = 2000
+AGENT_STEPS_PER_ROUND = 1000
 
 
 def main():
