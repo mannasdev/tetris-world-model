@@ -78,13 +78,17 @@ class SimplifiedTetrisEnv:
         return env
 
     def set_round(self, round_num: int):
-        """Round-1 reward-sparsity fallback: alife shaping only applies in round 1
-        (design doc: 'drop the shaping term in later rounds'). Rebuilds the
-        underlying env with alife=0 for round >= 2."""
+        """Alife shaping stays on across every round (changed from the original
+        design: alife=1.0 in round 1 only, alife=0.0 from round 2 on). Dropping
+        it after round 1 meant the shared replay buffer mixed transitions with
+        contradictory reward labels for near-identical states (surviving = +1
+        in round-1 data, +0 in round-2+ data) -- a real cause of the
+        actor-critic never improving past round 1 in practice, not just a
+        theoretical risk. See "Known Limitations" in the design spec. Keeping
+        alife constant across all rounds removes the label conflict entirely."""
         self._round = round_num
         width, height = self._env.width, self._env.height
-        alife = 1.0 if round_num <= 1 else 0.0
-        self._env = self._make_env(width, height, alife)
+        self._env = self._make_env(width, height, alife=1.0)
 
     def reset(self) -> np.ndarray:
         raw_obs, _info = self._env.reset(seed=self._seed)

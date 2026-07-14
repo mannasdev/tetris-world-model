@@ -29,9 +29,12 @@ def main():
 
     policy = random_policy
     for round_num in range(1, N_ROUNDS + 1):
-        # NOTE: round 1's alife=1.0 shaping vs. round 2+'s alife=0.0 means the replay
-        # buffer mixes transitions with contradictory reward labels; see "Known
-        # Limitations" in the design spec (docs/superpowers/specs/2026-07-14-tetris-world-model-design.md).
+        # alife shaping now stays on every round (env/tetris_env.py) -- the original
+        # round-2-drops-alife design caused a real, observed failure (survival
+        # flatlined ~10-11 steps/episode for 5 straight rounds, actor-critic loss
+        # converged near-zero without any real improvement -- dream exploitation
+        # off a contradictory-label reward head). See "Known Limitations" in the
+        # design spec for the full account.
         env.set_round(round_num)
         print(f"=== round {round_num}: collecting {EPISODES_PER_ROUND} episodes ===")
         stats = collect_episodes(env, buffer, policy, n_episodes=EPISODES_PER_ROUND)
